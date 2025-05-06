@@ -56,6 +56,7 @@
             padding: 0.5rem;
             border-radius: 0.25rem;
             font-size: 0.875rem;
+            word-wrap: break-word; /* 長いメッセージを折り返す / Wrap long messages */
         }
         .message-info { background-color: #e0f2fe; color: #0c546e; border: 1px solid #bee2f9; }
         .message-warning { background-color: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
@@ -137,66 +138,90 @@
         const messageArea = document.getElementById('messageArea');
 
         // --- イベントリスナー設定 / Setup Event Listeners ---
+        console.log("Setting up event listeners..."); // デバッグログ追加
+
+        // ドラッグ＆ドロップイベント / Drag & Drop Events
         ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
             dropArea.addEventListener(eventName, preventDefaults, false);
             document.body.addEventListener(eventName, preventDefaults, false);
         });
         ['dragenter', 'dragover'].forEach(eventName => {
-            dropArea.addEventListener(eventName, () => dropArea.classList.add('dragover'), false);
+            dropArea.addEventListener(eventName, () => {
+                // console.log(`Event: ${eventName} on dropArea`); // デバッグログ追加
+                dropArea.classList.add('dragover');
+            }, false);
         });
         ['dragleave', 'drop'].forEach(eventName => {
-            dropArea.addEventListener(eventName, () => dropArea.classList.remove('dragover'), false);
+            dropArea.addEventListener(eventName, () => {
+                // console.log(`Event: ${eventName} on dropArea`); // デバッグログ追加
+                dropArea.classList.remove('dragover');
+            }, false);
         });
         dropArea.addEventListener('drop', handleDrop, false);
-        dropArea.addEventListener('click', () => fileInput.click());
+        dropArea.addEventListener('click', () => {
+            console.log("Drop area clicked, triggering file input click."); // デバッグログ追加
+            fileInput.click();
+        });
         fileInput.addEventListener('change', handleFileSelect);
         columnSelect.addEventListener('change', analyzeAndPlot);
         applyScaleButton.addEventListener('click', applyYAxisScale);
         autoScaleButton.addEventListener('click', autoScaleYAxis);
         exportCsvButton.addEventListener('click', exportCsv);
+        console.log("Event listeners setup complete."); // デバッグログ追加
 
         function preventDefaults(e) {
+            // console.log(`Preventing default for: ${e.type}`); // デバッグログ追加
             e.preventDefault();
             e.stopPropagation();
         }
 
         function handleDrop(e) {
+            console.log("File drop event detected."); // デバッグログ追加
             const dt = e.dataTransfer;
             const files = dt.files;
+            console.log(`Dropped ${files.length} files.`); // デバッグログ追加
             handleFiles(files);
         }
 
         function handleFileSelect(e) {
+            console.log("File select event detected."); // デバッグログ追加
             const files = e.target.files;
+             console.log(`Selected ${files.length} files.`); // デバッグログ追加
             handleFiles(files);
-            // 同じファイルを選択してもchangeイベントが発生するようにvalueをクリア
-            // Clear value to allow selecting the same file again triggering change event
-            e.target.value = null;
+            e.target.value = null; // 同じファイルを選択してもchangeイベントが発生するようにvalueをクリア
         }
 
         function handleFiles(files) {
+            console.log("handleFiles started."); // デバッグログ追加
             resetAppState();
-            if (files.length === 0) {
+            if (!files || files.length === 0) { // filesがnullまたはundefinedでないかもチェック / Check if files is not null/undefined
                 fileInfo.textContent = 'ファイル未選択';
+                console.log("No files provided to handleFiles."); // デバッグログ追加
                 return;
             }
 
             fileInfo.textContent = `${files.length} ファイル処理中...`;
             showMessage('info', `${files.length} ファイルを読み込んでいます...`);
+            console.log(`Processing ${files.length} files.`); // デバッグログ追加
 
             const fileReadPromises = [];
             for (let i = 0; i < files.length; i++) {
+                console.log(`Adding file ${i + 1} to read promises: ${files[i].name}`); // デバッグログ追加
                 fileReadPromises.push(readFile(files[i]));
             }
 
             Promise.all(fileReadPromises)
                 .then(results => {
-                    fileData = results.filter(r => r !== null && r.data.length > 0); // nullや空のデータを除外 / Filter out null or empty data
+                    console.log("All file read promises resolved."); // デバッグログ追加
+                    fileData = results.filter(r => r !== null && r.data && r.data.length > 0); // nullや空のデータを除外 / Filter out null or empty data
+                    console.log(`Filtered fileData count: ${fileData.length}`); // デバッグログ追加
+
                     if (fileData.length > 0) {
                         // 全てのファイルで列数が一致するか最終確認 / Final check if all processed files have the same column count
                         const firstFileCols = fileData[0].data[0]?.length;
-                        if (firstFileCols === undefined) {
-                             showMessage('error', '最初の有効なファイルにデータがありません。');
+                        if (firstFileCols === undefined || firstFileCols === 0) { // 列数が0の場合もエラー / Also error if column count is 0
+                             showMessage('error', '最初の有効なファイルにデータ列がありません。');
+                             console.error("First valid file has no data columns."); // デバッグログ追加
                              resetAppState();
                              return;
                         }
@@ -204,10 +229,11 @@
 
                         if (!allColsMatch) {
                             showMessage('error', '読み込まれたファイル間で列数が一致しません。処理を中断しました。');
+                             console.error("Column count mismatch between files."); // デバッグログ追加
                             resetAppState();
                             return;
                         }
-                        expectedColumns = firstFileCols; // 最終的な期待列数を設定 / Set final expected columns
+                        expectedColumns = firstFileCols;
                         console.log(`最終的な期待列数: ${expectedColumns}`);
 
                         fileInfo.textContent = `${fileData.length} ファイル読み込み完了`;
@@ -216,11 +242,12 @@
                     } else {
                         fileInfo.textContent = '有効なファイルなし';
                         showMessage('error', '有効なテキストファイルが見つかりませんでした、または処理できませんでした。');
+                         console.error("No valid text files found or processed."); // デバッグログ追加
                         resetAppState();
                     }
                 })
                 .catch(error => {
-                    console.error("ファイル処理エラー:", error);
+                    console.error("ファイル処理エラー (Promise.all):", error); // デバッグログ追加
                     showMessage('error', `ファイル処理中にエラーが発生しました: ${error.message}`);
                     resetAppState();
                 });
@@ -228,15 +255,17 @@
 
         // ファイル読み込みとパース (JavaScriptで実装) / Read and parse a single file (Implemented in JavaScript)
         function readFile(file) {
+            console.log(`readFile started for: ${file.name}`); // デバッグログ追加
             // ファイルタイプをより緩やかにチェック / Looser check for file type
             if (!file.type.startsWith('text/') && !file.name.endsWith('.txt') && file.type !== "") {
                  console.warn(`ファイル "${file.name}" はテキストファイルではない可能性があるためスキップされました。タイプ: ${file.type}`);
                  return Promise.resolve(null); // テキストファイルでなければスキップ / Skip if not likely a text file
             }
 
-            return new Promise((resolve) => { // Removed reject for simplicity, resolve with null on error
+            return new Promise((resolve) => {
                 const reader = new FileReader();
                 reader.onload = (event) => {
+                    console.log(`File loaded: ${file.name}`); // デバッグログ追加
                     try {
                         const content = event.target.result;
                         const lines = content.split(/\r?\n/);
@@ -249,8 +278,7 @@
                         for (let i = 0; i < lines.length; i++) {
                             const trimmedLine = lines[i].trim();
                             if (trimmedLine && !trimmedLine.startsWith('#')) {
-                                const fields = trimmedLine.split('\t').filter(f => f !== ''); // 空のフィールドを除去して分割 / Split by tab, removing empty fields
-                                // 全て数値かNaNか確認 / Check if all fields are numeric or NaN
+                                const fields = trimmedLine.split('\t').filter(f => f !== '');
                                 if (fields.length > 0 && fields.every(f => !isNaN(parseFloat(f)) || f.toLowerCase() === 'nan')) {
                                     fileExpectedColumns = fields.length;
                                     firstValidLineNum = i;
@@ -261,16 +289,19 @@
                         }
 
                         if (fileExpectedColumns === null) {
+                            console.warn(`ファイル "${file.name}" で有効な数値データ行が見つかりませんでした。スキップします。`);
                             showMessage('warning', `ファイル "${file.name}" で有効な数値データ行が見つかりませんでした。スキップします。`);
                             resolve(null);
                             return;
                         }
 
                         // グローバルな期待列数が未設定なら設定、異なれば警告してスキップ / Set global expected columns or check consistency
+                        // expectedColumnsがnullの場合のみ設定 / Only set if expectedColumns is null
                         if (expectedColumns === null) {
                             expectedColumns = fileExpectedColumns;
                             console.log(`全体の期待列数を ${expectedColumns} に設定`);
                         } else if (fileExpectedColumns !== expectedColumns) {
+                            console.warn(`ファイル "${file.name}" の列数 (${fileExpectedColumns}) が他のファイル (${expectedColumns}) と異なるためスキップされました。`);
                             showMessage('warning', `ファイル "${file.name}" の列数 (${fileExpectedColumns}) が他のファイル (${expectedColumns}) と異なるためスキップされました。`);
                             resolve(null);
                             return;
@@ -281,23 +312,20 @@
                             const line = lines[i].trim();
                             if (!line || line.startsWith('#')) continue;
 
-                            const fields = line.split('\t').filter(f => f !== ''); // 空フィールドを除去 / Remove empty fields
+                            const fields = line.split('\t').filter(f => f !== '');
 
-                            // 列数が期待値と異なる行はスキップ / Skip lines with unexpected column count
                             if (fields.length !== expectedColumns) {
-                                if (i !== firstValidLineNum) { // 最初の有効行のエラーは既にハンドリング済みのはず / Should have handled first valid line error already
+                                if (i !== firstValidLineNum) {
                                      lineWarnings.push(`  - 行 ${i + 1}: 列数 ${fields.length} (期待値 ${expectedColumns}) - スキップ`);
                                 }
                                 continue;
                             }
 
-                            // 数値変換を試みる / Attempt numeric conversion
                             const rowData = fields.map(field => {
                                 const val = parseFloat(field);
                                 return isNaN(val) ? NaN : val;
                             });
 
-                            // 行内にNaN以外の数値が一つでもあれば有効な行とする / Consider row valid if at least one non-NaN number exists
                             if (rowData.some(val => !isNaN(val))) {
                                 data.push(rowData);
                             } else {
@@ -307,13 +335,16 @@
 
 
                         if (lineWarnings.length > 0) {
+                             console.warn(`ファイル "${file.name}" で問題のある行をスキップしました:\n${lineWarnings.join('\n')}`);
                              showMessage('warning', `ファイル "${file.name}" で問題のある行をスキップしました:\n${lineWarnings.join('\n')}`);
                         }
 
                         if (data.length === 0) {
+                            console.warn(`ファイル "${file.name}" に有効なデータがありませんでした。`);
                             showMessage('warning', `ファイル "${file.name}" に有効なデータがありませんでした。`);
                             resolve(null);
                         } else {
+                            console.log(`File parsed successfully: ${file.name}, Rows: ${data.length}`); // デバッグログ追加
                             resolve({ name: file.name, data: data });
                         }
                     } catch (e) {
@@ -327,6 +358,7 @@
                     showMessage('error', `ファイル "${file.name}" の読み込み中にエラーが発生しました。`);
                     resolve(null);
                 };
+                console.log(`Reading file as text: ${file.name}`); // デバッグログ追加
                 reader.readAsText(file);
             });
         }
@@ -334,7 +366,9 @@
 
         // 列選択ドロップダウンを生成 / Populate column select dropdown
         function populateColumnSelect() {
+            console.log("Populating column select..."); // デバッグログ追加
             if (fileData.length === 0 || expectedColumns === null || expectedColumns < 2) {
+                console.log("Cannot populate columns, insufficient data or columns."); // デバッグログ追加
                 columnSelect.innerHTML = '<option value="">---</option>';
                 columnSelect.disabled = true;
                 return;
@@ -349,16 +383,18 @@
             }
             columnSelect.disabled = false;
             columnSelect.value = "1"; // デフォルト選択 / Default selection
+            console.log("Column select populated, triggering analysis."); // デバッグログ追加
             analyzeAndPlot(); // 自動的に解析実行 / Automatically run analysis
         }
 
         // データ解析とグラフ描画 / Analyze data and plot graph
         function analyzeAndPlot() {
-            // 以前のエラーメッセージをクリア / Clear previous messages
+            console.log("analyzeAndPlot started."); // デバッグログ追加
             messageArea.classList.add('hidden');
             messageArea.textContent = '';
 
             if (fileData.length === 0 || !columnSelect.value) {
+                console.log("analyzeAndPlot: No file data or column selected."); // デバッグログ追加
                 resetPlotArea();
                 return;
             }
@@ -366,6 +402,7 @@
             const selectedColIndex = parseInt(columnSelect.value);
             const xColIndex = 0;
             const baselineExcludePoints = 100;
+            console.log(`Analyzing column ${selectedColIndex}, baseline exclude: ${baselineExcludePoints}`); // デバッグログ追加
 
             let allZScoreColumns = [];
             let allXColumns = [];
@@ -377,10 +414,9 @@
                 const data = fileInfo.data;
                 const nRows = data.length;
 
-                // 列数が期待値と一致するか最終確認 / Final check if column count matches expected
                 if (!data[0] || data[0].length !== expectedColumns) {
                     console.warn(`Skipping file ${fileInfo.name} due to unexpected column count during analysis.`);
-                    return; // このファイルをスキップ / Skip this file
+                    return;
                 }
 
 
@@ -422,10 +458,12 @@
             });
 
             if (skippedBaselineFiles.length > 0) {
+                 console.warn(`Baseline calculation skipped for some files: ${skippedBaselineFiles.join(', ')}`); // デバッグログ追加
                 showMessage('warning', `以下のファイルのベースライン(μ, σ)が計算できなかったため、Z-scoreはNaNとして扱われました:\n- ${skippedBaselineFiles.join('\n- ')}`);
             }
 
             if (allZScoreColumns.length === 0) {
+                console.error("No valid Z-score data columns found."); // デバッグログ追加
                 showMessage('error', '有効なZ-scoreデータがありません。');
                 resetPlotArea();
                 return;
@@ -433,11 +471,13 @@
 
 
             // 最小行数に合わせる / Trim to minimum rows
+            console.log(`Trimming data to minRows: ${minRows}`); // デバッグログ追加
             allZScoreColumns = allZScoreColumns.map(col => col.slice(0, minRows));
             allXColumns = allXColumns.map(col => col.slice(0, minRows));
-            const xValues = allXColumns[0]; // Use X from first valid file
+            const xValues = allXColumns[0];
 
             // 平均、中央値、SEMを計算 / Calculate Mean, Median, SEM
+            console.log("Calculating statistics..."); // デバッグログ追加
             let avgZScore = [];
             let semZScore = [];
             let medianZScore = [];
@@ -470,6 +510,7 @@
                 sem: semZScore,
                 median: medianZScore
             };
+            console.log("Statistics calculation complete."); // デバッグログ追加
 
             // NaNを含む行を除去したデータを作成 / Create data excluding rows with NaN
             const plotData = { x: [], avg: [], sem: [], median: [] };
@@ -481,6 +522,7 @@
                     plotData.median.push(calculatedStats.median[i]);
                 }
             }
+            console.log(`Plotting ${plotData.x.length} data points.`); // デバッグログ追加
 
 
             // グラフ描画 / Plot graph using Plotly.js
@@ -489,54 +531,35 @@
                 const traceAvg = {
                     x: plotData.x,
                     y: plotData.avg,
-                    error_y: {
-                        type: 'data',
-                        array: plotData.sem,
-                        visible: true,
-                        color: 'red',
-                        thickness: 1
-                    },
-                    mode: 'lines+markers',
-                    type: 'scatter',
-                    name: `列 ${selectedColIndex} 平均 Z-score ± S.E.M.`, // Legend label
-                    line: { color: 'blue' },
-                    marker: { size: 4 }
+                    error_y: { type: 'data', array: plotData.sem, visible: true, color: 'red', thickness: 1 },
+                    mode: 'lines+markers', type: 'scatter', name: `列 ${selectedColIndex} 平均 Z-score ± S.E.M.`,
+                    line: { color: 'blue' }, marker: { size: 4 }
                 };
-
                 const traceMedian = {
-                    x: plotData.x,
-                    y: plotData.median,
-                    mode: 'lines+markers',
-                    type: 'scatter',
-                    name: `列 ${selectedColIndex} 中央値 Z-score`, // Legend label
-                    line: { color: 'green', dash: 'dash' },
+                    x: plotData.x, y: plotData.median, mode: 'lines+markers', type: 'scatter',
+                    name: `列 ${selectedColIndex} 中央値 Z-score`, line: { color: 'green', dash: 'dash' },
                     marker: { symbol: 'triangle-up', size: 5 }
                 };
-
                 const layout = {
-                    title: `列 ${selectedColIndex} の Z-score (ベースライン: 最初/最後 ${baselineExcludePoints}点除外)`, // Graph title
-                    xaxis: { title: `${columnHeaders[xColIndex]} (X軸)` }, // X-axis label
-                    yaxis: { title: 'Z-score', autorange: true }, // Y-axis label, start with autorange
-                    showlegend: true,
-                    legend: {x: 0.1, y: 0.9}, // 凡例の位置調整 / Adjust legend position
-                    margin: { l: 50, r: 30, b: 50, t: 50 } // Adjust margins
+                    title: `列 ${selectedColIndex} の Z-score (ベースライン: 最初/最後 ${baselineExcludePoints}点除外)`,
+                    xaxis: { title: `${columnHeaders[xColIndex]} (X軸)` }, yaxis: { title: 'Z-score', autorange: true },
+                    showlegend: true, legend: {x: 0.1, y: 0.9}, margin: { l: 50, r: 30, b: 50, t: 50 }
                 };
 
                 Plotly.newPlot('plotArea', [traceAvg, traceMedian], layout, {responsive: true});
-                currentPlot = plotArea; // Store reference to the plot
+                currentPlot = plotArea;
 
-                // スケール調整UIを有効化 / Enable scale adjustment UI
                 yminInput.disabled = false;
                 ymaxInput.disabled = false;
                 applyScaleButton.disabled = false;
                 autoScaleButton.disabled = false;
                 exportCsvButton.disabled = false;
-
-                // 現在の自動スケール値を入力欄に表示 / Display current auto-scaled values
                 updateScaleInputsFromPlot();
+                console.log("Graph plotted successfully."); // デバッグログ追加
 
             } else {
-                plotArea.innerHTML = '<p class="text-center text-gray-500">有効なデータ点がありません。</p>'; // No valid data points
+                console.warn("No valid data points to plot."); // デバッグログ追加
+                plotArea.innerHTML = '<p class="text-center text-gray-500">有効なデータ点がありません。</p>';
                 exportCsvButton.disabled = true;
                 yminInput.disabled = true;
                 ymaxInput.disabled = true;
@@ -553,100 +576,103 @@
 
     // Y軸スケールを適用 / Apply Y-axis scale
     function applyYAxisScale() {
+        console.log("Applying Y axis scale..."); // デバッグログ追加
         if (!currentPlot || !calculatedStats) return;
-
         const yminVal = parseFloat(yminInput.value);
         const ymaxVal = parseFloat(ymaxInput.value);
-
         const updateLayout = {};
-
         if (!isNaN(yminVal) && !isNaN(ymaxVal)) {
             if (yminVal >= ymaxVal) {
-                showMessage('error', 'Y軸の最小値は最大値より小さく設定してください。');
-                return;
+                showMessage('error', 'Y軸の最小値は最大値より小さく設定してください。'); return;
             }
-            updateLayout.yaxis = { range: [yminVal, ymaxVal], autorange: false }; // autorangeをfalseに設定 / Set autorange to false
+            updateLayout['yaxis.range'] = [yminVal, ymaxVal]; // Use string key for nested property
+            updateLayout['yaxis.autorange'] = false;
         } else if (!isNaN(yminVal)) {
             const currentYMax = plotArea.layout.yaxis.range ? plotArea.layout.yaxis.range[1] : null;
-            updateLayout.yaxis = { range: [yminVal, currentYMax], autorange: false };
+            updateLayout['yaxis.range'] = [yminVal, currentYMax];
+            updateLayout['yaxis.autorange'] = false;
         } else if (!isNaN(ymaxVal)) {
             const currentYMin = plotArea.layout.yaxis.range ? plotArea.layout.yaxis.range[0] : null;
-            updateLayout.yaxis = { range: [currentYMin, ymaxVal], autorange: false };
+            updateLayout['yaxis.range'] = [currentYMin, ymaxVal];
+            updateLayout['yaxis.autorange'] = false;
         } else {
-            showMessage('warning', '有効な最小値または最大値が入力されていません。');
-            return;
+            showMessage('warning', '有効な最小値または最大値が入力されていません。'); return;
         }
-
-        Plotly.relayout(plotArea, updateLayout); // relayoutを使用して軸範囲のみ更新 / Use relayout to update only axis range
+        console.log("Relayouting with:", updateLayout); // デバッグログ追加
+        Plotly.relayout(plotArea, updateLayout);
     }
 
     // Y軸を自動スケール / Auto-scale Y-axis
     function autoScaleYAxis() {
+        console.log("Applying Y axis auto scale..."); // デバッグログ追加
         if (!currentPlot) return;
-        const updateLayout = {
-            'yaxis.autorange': true // 自動スケールを有効にする / Enable autorange
-        };
+        const updateLayout = { 'yaxis.autorange': true };
         Plotly.relayout(plotArea, updateLayout).then(() => {
+            console.log("Autoscale applied, updating inputs."); // デバッグログ追加
             updateScaleInputsFromPlot();
         });
     }
 
     // 現在のグラフのY軸範囲を入力欄に更新 / Update scale inputs from current plot Y-axis range
     function updateScaleInputsFromPlot() {
-        setTimeout(() => { // Plotlyのレイアウト更新が非同期の場合があるため少し待つ / Wait slightly as Plotly layout updates can be async
-            if (plotArea.layout && plotArea.layout.yaxis && Array.isArray(plotArea.layout.yaxis.range)) {
-                const [ymin_auto, ymax_auto] = plotArea.layout.yaxis.range;
-                if (typeof ymin_auto === 'number' && typeof ymax_auto === 'number') {
-                    yminInput.value = `${ymin_auto.toPrecision(4)}`;
-                    ymaxInput.value = `${ymax_auto.toPrecision(4)}`;
+        // Plotlyのレイアウト更新が非同期の場合があるため少し待つ / Wait slightly as Plotly layout updates can be async
+        setTimeout(() => {
+            try { // エラーハンドリング追加 / Add error handling
+                if (plotArea.layout && plotArea.layout.yaxis && Array.isArray(plotArea.layout.yaxis.range)) {
+                    const [ymin_auto, ymax_auto] = plotArea.layout.yaxis.range;
+                    if (typeof ymin_auto === 'number' && typeof ymax_auto === 'number') {
+                        yminInput.value = `${ymin_auto.toPrecision(4)}`;
+                        ymaxInput.value = `${ymax_auto.toPrecision(4)}`;
+                        console.log(`Updated scale inputs: min=${yminInput.value}, max=${ymaxInput.value}`); // デバッグログ追加
+                    } else {
+                         yminInput.value = '';
+                         ymaxInput.value = '';
+                    }
                 } else {
+                     console.log("Could not get yaxis range from plot layout."); // デバッグログ追加
                      yminInput.value = '';
                      ymaxInput.value = '';
                 }
-            } else {
+            } catch (e) {
+                 console.error("Error updating scale inputs:", e);
                  yminInput.value = '';
                  ymaxInput.value = '';
             }
-        }, 100); // 100ms待機 / Wait 100ms
+        }, 150); // 150ms待機 / Wait 150ms (少し長めに)
     }
 
 
     // CSVエクスポート / Export CSV
     function exportCsv() {
+        console.log("Export CSV requested."); // デバッグログ追加
         if (!calculatedStats || calculatedStats.x.length === 0) {
             showMessage('warning', 'エクスポートするデータがありません。');
             return;
         }
-
-        // ヘッダー行 / Header row
         let csvContent = "X_Value,Average_ZScore,SEM_ZScore,Median_ZScore\n";
-
-        // データ行 / Data rows
         for (let i = 0; i < calculatedStats.x.length; i++) {
-            // NaNでないことを確認してから追加 / Add only if not NaN
              if (!isNaN(calculatedStats.avg[i]) && !isNaN(calculatedStats.sem[i]) && !isNaN(calculatedStats.median[i])) {
                  csvContent += `${calculatedStats.x[i]},${calculatedStats.avg[i]},${calculatedStats.sem[i]},${calculatedStats.median[i]}\n`;
              }
         }
-
-
-        // BOMを追加してExcelでの文字化けを防ぐ / Add BOM for Excel compatibility
         const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement("a");
         const url = URL.createObjectURL(blob);
         link.setAttribute("href", url);
         const selectedCol = columnSelect.options[columnSelect.selectedIndex]?.text || 'data';
-        const filename = `ZScore_analysis_result_${selectedCol.replace(' ', '_')}.csv`;
+        const filename = `ZScore_analysis_result_${selectedCol.replace(/[^a-zA-Z0-9]/g, '_')}.csv`; // ファイル名を安全に / Sanitize filename
         link.setAttribute("download", filename);
         link.style.visibility = 'hidden';
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        console.log(`CSV exported as ${filename}`); // デバッグログ追加
         showMessage('info', `データが ${filename} としてダウンロードされました。`);
     }
 
      // メッセージ表示関数 / Function to display messages
     function showMessage(type, message) {
+        console.log(`Message (${type}): ${message.replace(/\n/g, ' ')}`); // デバッグログ追加 (改行はスペースに)
         messageArea.classList.remove('hidden', 'message-info', 'message-warning', 'message-error');
         if (type === 'info') {
             messageArea.classList.add('message-info');
@@ -655,14 +681,18 @@
         } else if (type === 'error') {
             messageArea.classList.add('message-error');
         }
-        // メッセージ内の改行を<br>に置換 / Replace newlines with <br> for HTML display
         messageArea.innerHTML = message.replace(/\n/g, '<br>');
         messageArea.classList.remove('hidden');
     }
 
     // プロットエリアリセット / Reset plot area
     function resetPlotArea() {
-         Plotly.purge(plotArea); // Plotlyグラフを削除 / Remove Plotly plot
+         console.log("Resetting plot area."); // デバッグログ追加
+         try {
+             Plotly.purge(plotArea); // Plotlyグラフを削除 / Remove Plotly plot
+         } catch (e) {
+             console.warn("Error purging plot area (might be normal if no plot exists):", e);
+         }
          plotArea.innerHTML = '<p class="text-center text-gray-500">ファイルを選択し、列を選択するとグラフが表示されます。</p>'; // Display initial message
          currentPlot = null;
     }
@@ -670,6 +700,7 @@
 
     // アプリ状態リセット / Reset application state
     function resetAppState() {
+        console.log("Resetting application state."); // デバッグログ追加
         fileData = [];
         calculatedStats = null;
         columnHeaders = [];
@@ -687,6 +718,9 @@
         messageArea.classList.add('hidden');
         resetPlotArea();
     }
+
+    // 初期化ログ / Initialization log
+    console.log("Z-score Analyzer Initialized.");
 
     </script>
 </body>
